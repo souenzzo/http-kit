@@ -45,7 +45,7 @@ public class NBlockingSSL {
     private static SocketChannel socketChannel;
 
     // private final static String HOST = "d.web2.qq.com";
-    private final static String HOST = "github.com";
+    private final static String HOST = System.getProperty("org.httpkit.client.NBlockingSSL.host","github.com");
 
     public static void main(String[] args) throws IOException {
         engine = CLIENT_CONTEXT.createSSLEngine();
@@ -55,7 +55,7 @@ public class NBlockingSSL {
         socketChannel = SocketChannel.open();
         socketChannel.configureBlocking(false);
         key = socketChannel.register(selector, SelectionKey.OP_CONNECT);
-        socketChannel.connect(new InetSocketAddress(HOST, 443));
+        socketChannel.connect(new InetSocketAddress(HOST, Math.toIntExact(Long.getLong("org.httpkit.client.NBlockingSSL.port",443))));
 
         int i = 0;
         // myNetData.clear();
@@ -206,7 +206,7 @@ public class NBlockingSSL {
                 SSLEngineResult res = engine.wrap(buffer, myNetData);
 
                 RandomAccessFile r = new RandomAccessFile(
-                        "/home/feng/workspace/http-kit/blog.access.log", "r");
+                        System.getProperty("org.httpkit.client.NBlockingSSL.file", "/home/feng/workspace/http-kit/blog.access.log"), "r");
                 MappedByteBuffer b = r.getChannel().map(MapMode.READ_ONLY, 0,
                         r.getChannel().size());
                 ByteBuffer bf = ByteBuffer.allocate(256 * 1024);
