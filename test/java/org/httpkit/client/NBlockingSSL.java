@@ -3,9 +3,7 @@ package org.httpkit.client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLEngineResult;
+import javax.net.ssl.*;
 import javax.net.ssl.SSLEngineResult.Status;
 
 import java.io.IOException;
@@ -18,7 +16,9 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 
 public class NBlockingSSL {
@@ -39,23 +39,28 @@ public class NBlockingSSL {
     public static SSLEngine engine;
     private static boolean isHandshakeDone = false;
     private static SelectionKey key;
+    static Long http_port = Long.getLong("org.httpkit.client.NBlockingSSL.port", 443);
     private static ByteBuffer myNetData = ByteBuffer.allocate(32 * 1024);
     private static ByteBuffer peerNetData = ByteBuffer.allocate(24 * 1024);
     private static ByteBuffer peerAppData = ByteBuffer.allocate(24 * 1024);
     private static SocketChannel socketChannel;
 
     // private final static String HOST = "d.web2.qq.com";
-    private final static String HOST = "github.com";
+    private final static String HOST = System.getProperty("org.httpkit.client.NBlockingSSL.host","github.com");
 
     public static void main(String[] args) throws IOException {
         engine = CLIENT_CONTEXT.createSSLEngine();
         engine.setUseClientMode(true);
+        SSLParameters params = engine.getSSLParameters();
+        params.setEndpointIdentificationAlgorithm("HTTPS");
+        params.setServerNames(Arrays.asList(new SNIHostName(HOST)));
+        engine.setSSLParameters(params);
 
         selector = Selector.open();
         socketChannel = SocketChannel.open();
         socketChannel.configureBlocking(false);
         key = socketChannel.register(selector, SelectionKey.OP_CONNECT);
-        socketChannel.connect(new InetSocketAddress(HOST, 443));
+        socketChannel.connect(new InetSocketAddress(HOST, Math.toIntExact(http_port)));
 
         int i = 0;
         // myNetData.clear();
@@ -104,8 +109,14 @@ public class NBlockingSSL {
                             doHandshake();
                         } else {
                             myNetData.clear();
-                            ByteBuffer buffer = ByteBuffer.wrap(("GET / HTTP/1.1\r\nHost: "
-                                    + HOST + "\r\n\r\n").getBytes());
+                            String http_payload = String.join("\r\n",
+                                    "GET / HTTP/1.1",
+                                    "Host: " + HOST + ((http_port == 443)
+                                            ? ""
+                                            : (":" + http_port.toString())),
+                                    "");
+                            System.out.println(http_payload);
+                            ByteBuffer buffer = ByteBuffer.wrap(http_payload.getBytes());
                             SSLEngineResult res = engine.wrap(buffer, myNetData);
                             if (res.getStatus() == Status.OK) {
                                 myNetData.flip();
@@ -131,6 +142,7 @@ public class NBlockingSSL {
         loop: while (!isHandshakeDone) {
             switch (hs) {
             case NEED_TASK:
+                System.out.println("NEED_TASK");
                 Runnable runnable;
                 while ((runnable = engine.getDelegatedTask()) != null) {
                     logger.info("get task " + runnable);
@@ -138,6 +150,7 @@ public class NBlockingSSL {
                 }
                 break;
             case NEED_UNWRAP:
+                System.out.println("NEED_UNWRAP");
                 int read = socketChannel.read(peerNetData);
                 logger.info("read {} bytes", read);
                 if (read < 0) {
@@ -148,7 +161,7 @@ public class NBlockingSSL {
                     SSLEngineResult res = engine.unwrap(peerNetData, peerAppData);
                     logger.info("hs unwrap, " + res);
                     if(res.getStatus() != Status.OK) {
-                        System.out.println("--------------------------");
+                        System.out.println("--------------------------" + res.getStatus().toString());
                     }
                     peerNetData.compact();
                     switch (res.getStatus()) {
@@ -172,6 +185,7 @@ public class NBlockingSSL {
                 }
                 break;
             case NEED_WRAP:
+                System.out.println("NEED_WRAP");
                 // myNetData.compact();
                 SSLEngineResult result = engine.wrap(ByteBuffer.allocate(0), myNetData);
                 logger.info("wrap: " + result);
@@ -201,12 +215,20 @@ public class NBlockingSSL {
             if (isHandshakeDone) {
                 logger.info("handshake done");
                 peerNetData.clear();
+                String http_payload = String.join("\r\n",
+                        "GET / HTTP/1.1",
+                        "Host: " + HOST + ((http_port == 443)
+                                ? ""
+                                : (":" + http_port.toString())),
+                        "");
+                System.out.println(http_payload);
+
                 ByteBuffer buffer = ByteBuffer
-                        .wrap(("GET / HTTP/1.1\r\nHost: " + HOST + "\r\n\r\n").getBytes());
+                        .wrap(http_payload.getBytes());
                 SSLEngineResult res = engine.wrap(buffer, myNetData);
 
                 RandomAccessFile r = new RandomAccessFile(
-                        "/home/feng/workspace/http-kit/blog.access.log", "r");
+                        System.getProperty("org.httpkit.client.NBlockingSSL.file", "/home/feng/workspace/http-kit/blog.access.log"), "r");
                 MappedByteBuffer b = r.getChannel().map(MapMode.READ_ONLY, 0,
                         r.getChannel().size());
                 ByteBuffer bf = ByteBuffer.allocate(256 * 1024);

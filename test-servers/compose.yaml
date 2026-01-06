@@ -1,0 +1,19 @@
+services:
+  https:
+    image: nginx:alpine
+    command: [ nginx-debug, '-g', 'daemon off;' ]
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./www:/etc/nginx/html:ro
+      - ./https.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+  https-reject-handshake:
+    image: nginx:alpine
+    command: [nginx-debug, '-g', 'daemon off;']
+    ports:
+      - "9443:9443"
+    volumes:
+      - ./www:/etc/nginx/html:ro
+      - ./https-reject-handshake.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
