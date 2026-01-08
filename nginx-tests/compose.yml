@@ -1,0 +1,60 @@
+# docker compose up service-tests --exit-code-from service-tests
+
+services:
+  ssl-gen:
+    image: alpine/openssl
+    entrypoint: /bin/sh
+    volumes:
+      - ssl:/ssl
+    command:
+      - "-c"
+      - |
+        echo ok;
+        openssl genrsa -out /ssl/api.localhost.key 2048;
+        openssl req -new \
+          -subj "/C=BR/ST=Rio/L=Rio/O=HttpKit/OU=OSS/CN=api.localhost" \
+          -key /ssl/api.localhost.key \
+          -out /ssl/api.localhost.csr;
+        openssl x509 -req -days 365 \
+          -in /ssl/api.localhost.csr \
+          -signkey /ssl/api.localhost.key \
+          -out /ssl/api.localhost.crt;
+  keytool:
+    image: eclipse-temurin:21-alpine
+    entrypoint: /bin/sh
+    depends_on:
+      ssl-gen:
+        condition: service_completed_successfully
+    volumes:
+      - ssl:/ssl
+    command:
+      - "-c"
+      - |
+        keytool -import -trustcacerts -alias api.localhost \
+          -file /ssl/api.localhost.crt \
+          -keystore /ssl/truststore.jks \
+          -storepass httpkit \
+          -noprompt;
+  nginx-https:
+    image: nginx:alpine
+    # platform: linux/amd64
+    volumes:
+      - ./www:/etc/nginx/html:ro
+      - ./https.conf:/etc/nginx/nginx.conf:ro
+      - ssl:/etc/nginx/ssl:ro
+    depends_on:
+      keytool:
+        condition: service_completed_successfully
+  service-tests:
+    image: clojure:alpine
+    platform: linux/amd64
+    command: ["-e", "(prn :ok!)" ]
+#    volumes:
+#      - ../.:/tmp
+#    depends_on:
+#      - nginx-https
+#    links:
+#      - nginx-https
+volumes:
+  ssl:
+
